@@ -3,15 +3,25 @@ from multiprocessing import Pool
 import requests
 from requests.exceptions import RequestException
 import re
+import pymongo
+
+client = pymongo.MongoClient('localhost', connect=False)
+db = client['maoyan']
+
 
 def get_one_page(url):
+    # 添加headers信息，否则可能request.get(url)的内容为空，与时间的页面查看源码不一致
+    headers = {
+        'User-Agent': "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/68.0.3440.106 Safari/537.36"
+    }
     try:
-        response = requests.get(url)
+        response = requests.get(url, headers=headers)
         if response.status_code == 200:
             return response.text
         return None
     except RequestException:
         return None
+
 
 def parse_one_page(html):
     pattern = re.compile('<dd>.*?board-index.*?>(\d+)</i>.*?data-src="(.*?)".*?name"><a'
@@ -28,16 +38,26 @@ def parse_one_page(html):
             'score': item[5]+item[6]
         }
 
+
 def write_to_file(content):
     with open('result.txt', 'a', encoding='utf-8') as f:
         f.write(json.dumps(content, ensure_ascii=False) + '\n')
         f.close()
+
+
+def save_to_mongo(result):
+    if db['maoyan'].insert(result):
+        print('Successfully Saved to Mongo', result)
+        return True
+    return False
+
 
 def main(offset):
     url = 'http://maoyan.com/board/4?offset=' + str(offset)
     html = get_one_page(url)
     for item in parse_one_page(html):
         print(item)
+        save_to_mongo(item)
         write_to_file(item)
 
 
